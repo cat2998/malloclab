@@ -81,7 +81,7 @@ static void *find_fit(size_t asize)
     /*  First-fit search */
     void *bp;
 
-    for (bp = free_listp; bp != NULL; bp = SUCC(bp))
+    for (bp = free_listp; bp != 0; bp = SUCC(bp))
     {
         if (asize <= GET_SIZE(HDRP(bp)))
             return bp;
@@ -92,6 +92,7 @@ static void *find_fit(size_t asize)
 
 static void place(void *bp, size_t asize)
 {
+    splice_free_block(bp);
 
     size_t csize = GET_SIZE(HDRP(bp));
 
@@ -102,19 +103,10 @@ static void place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
-
-        SUCC(bp) = SUCC(PREV_BLKP(bp));
-        PRED(bp) = PRED(PREV_BLKP(bp));
-        if (SUCC(bp) != NULL)
-            PRED(SUCC(bp)) = bp;
-        if (PREV_BLKP(bp) == free_listp)
-            free_listp = bp;
-        else
-            SUCC(PRED(PREV_BLKP(bp))) = bp;
+        add_free_block(bp);
     }
     else
     {
-        splice_free_block(bp);
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
@@ -129,7 +121,6 @@ static void *coalesce(void *bp)
     if (prev_alloc && next_alloc)
     { /* Case 1 */
         add_free_block(bp);
-        return bp;
     }
     else if (prev_alloc && !next_alloc)
     { /* Case 2 */

@@ -64,7 +64,7 @@ team_t team = {
 #define HDRP(bp) ((char *)(bp)-WSIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
-#define PRED(bp) GET(bp)
+#define PRED(bp) GET(bp) // *(void **)(bp)
 #define SUCC(bp) GET((char *)bp + WSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
@@ -74,14 +74,14 @@ team_t team = {
 static char *free_listp;
 
 static void splice_free_block(void *bp); // 가용 리스트에서 bp에 해당하는 블록을 제거하는 함수
-static void add_free_block(void *bp);    // 가용 리스트에 주소순으로 현재 블록을 추가하는 함수
+static void add_free_block(void *bp);    // 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수
 
 static void *find_fit(size_t asize)
 {
     /*  First-fit search */
     void *bp;
 
-    for (bp = free_listp; bp != NULL; bp = SUCC(bp))
+    for (bp = free_listp; bp != 0; bp = SUCC(bp))
     {
         if (asize <= GET_SIZE(HDRP(bp)))
             return bp;
@@ -92,6 +92,7 @@ static void *find_fit(size_t asize)
 
 static void place(void *bp, size_t asize)
 {
+    splice_free_block(bp);
 
     size_t csize = GET_SIZE(HDRP(bp));
 
@@ -102,19 +103,10 @@ static void place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
-
-        SUCC(bp) = SUCC(PREV_BLKP(bp));
-        PRED(bp) = PRED(PREV_BLKP(bp));
-        if (SUCC(bp) != NULL)
-            PRED(SUCC(bp)) = bp;
-        if (PREV_BLKP(bp) == free_listp)
-            free_listp = bp;
-        else
-            SUCC(PRED(PREV_BLKP(bp))) = bp;
+        add_free_block(bp);
     }
     else
     {
-        splice_free_block(bp);
         PUT(HDRP(bp), PACK(csize, 1));
         PUT(FTRP(bp), PACK(csize, 1));
     }
@@ -128,8 +120,6 @@ static void *coalesce(void *bp)
 
     if (prev_alloc && next_alloc)
     { /* Case 1 */
-        add_free_block(bp);
-        return bp;
     }
     else if (prev_alloc && !next_alloc)
     { /* Case 2 */
@@ -137,11 +127,10 @@ static void *coalesce(void *bp)
         size += GET_SIZE(HDRP(NEXT_BLKP(bp)));
         PUT(HDRP(bp), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
-        add_free_block(bp);
     }
     else if (!prev_alloc && next_alloc)
     { /* Case 3 */
-        // splice_free_block(PREV_BLKP(bp));
+        splice_free_block(PREV_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp)));
         PUT(HDRP(PREV_BLKP(bp)), PACK(size, 0));
         PUT(FTRP(bp), PACK(size, 0));
@@ -149,6 +138,7 @@ static void *coalesce(void *bp)
     }
     else
     { /* Case 4 */
+        splice_free_block(PREV_BLKP(bp));
         splice_free_block(NEXT_BLKP(bp));
         size += GET_SIZE(HDRP(PREV_BLKP(bp))) +
                 GET_SIZE(FTRP(NEXT_BLKP(bp)));
@@ -156,7 +146,7 @@ static void *coalesce(void *bp)
         PUT(FTRP(NEXT_BLKP(bp)), PACK(size, 0));
         bp = PREV_BLKP(bp);
     }
-    // add_free_block(bp);
+    add_free_block(bp);
     return bp;
 }
 
@@ -198,6 +188,8 @@ int mm_init(void)
     free_listp += (4 * WSIZE);
 
     /* Wxtend the empty hep with a free block of CHUNKSIZE bytes */
+    if (extend_heap(4) == NULL)
+        return -1;
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
         return -1;
     return 0;
@@ -291,39 +283,12 @@ static void splice_free_block(void *bp)
     return;
 }
 
-// 가용 리스트에 주소순으로 현재 블록을 추가하는 함수
+// 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수
 static void add_free_block(void *bp)
 {
-    void *str;
-
-    if (free_listp == NULL)
-    {
-        PRED(bp) = NULL;
-        SUCC(bp) = NULL;
-        free_listp = bp;
-        return;
-    }
-
-    for (str = free_listp; str != NULL; str = SUCC(str))
-    {
-        if (bp < str)
-        {
-            if (str != free_listp)
-                SUCC(PRED(str)) = bp;
-            PRED(bp) = PRED(str);
-            SUCC(bp) = str;
-            PRED(str) = bp;
-            if (str == free_listp)
-                free_listp = bp;
-            return;
-        }
-        if (SUCC(str) == NULL)
-        {
-            PRED(bp) = str;
-            SUCC(bp) = SUCC(str);
-            SUCC(str) = bp;
-            return;
-        }
-    }
+    SUCC(bp) = free_listp;
+    if (free_listp != NULL)
+        PRED(free_listp) = bp;
+    free_listp = bp;
     return;
 }
