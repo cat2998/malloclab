@@ -26,7 +26,7 @@ team_t team = {
     /* Team name */
     "ateam",
     /* First member's full name */
-    "Kwon Jihyun",
+    "권지현 이민형 진재혁",
     /* First member's email address */
     "cat2998@naver.com",
     /* Second member's full name (leave blank if none) */
@@ -258,21 +258,26 @@ void *mm_realloc(void *bp, size_t size)
         return 0;
     }
     if (bp == NULL)
-    {
         return mm_malloc(size);
+
+    size_t old_size = GET_SIZE(HDRP(bp));
+    size_t next_size = GET_SIZE(HDRP(NEXT_BLKP(bp)));
+    size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
+
+    if (size + 2 * WSIZE <= old_size)
+        return bp;
+    if (!next_alloc && size + 2 * WSIZE <= old_size + next_size)
+    {
+        splice_free_block(NEXT_BLKP(bp));
+        PUT(HDRP(bp), PACK(old_size + next_size, 1));
+        PUT(FTRP(bp), PACK(old_size + next_size, 1));
+        return bp;
     }
 
     void *newp = mm_malloc(size);
     if (newp == NULL)
-    {
         return 0;
-    }
-    size_t oldsize = GET_SIZE(HDRP(bp));
-    if (size < oldsize)
-    {
-        oldsize = size;
-    }
-    memcpy(newp, bp, oldsize);
+    memcpy(newp, bp, old_size);
     mm_free(bp);
     return newp;
 }
@@ -281,7 +286,6 @@ void *mm_realloc(void *bp, size_t size)
 static void splice_free_block(void *bp)
 {
     int class = get_class(GET_SIZE(HDRP(bp)));
-    // char *bp_list = ROOT(class);
 
     if (SUCC(bp) != NULL)
         PRED(SUCC(bp)) = PRED(bp);
@@ -297,13 +301,6 @@ static void splice_free_block(void *bp)
 // 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수
 static void add_free_block(void *bp)
 {
-    // char *bp_list = ROOT(get_class(GET_SIZE(HDRP(bp))));
-
-    // SUCC(bp) = bp_list;
-    // if (bp_list != NULL)
-    //     PRED(bp_list) = bp;
-    // bp_list = bp;
-
     int class = get_class(GET_SIZE(HDRP(bp)));
 
     SUCC(bp) = ROOT(class);
