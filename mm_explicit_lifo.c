@@ -81,7 +81,7 @@ static void *find_fit(size_t asize)
     /*  First-fit search */
     void *bp;
 
-    for (bp = free_listp; bp != 0; bp = SUCC(bp))
+    for (bp = free_listp; bp != NULL; bp = SUCC(bp))
     {
         if (asize <= GET_SIZE(HDRP(bp)))
             return bp;

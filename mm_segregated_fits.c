@@ -26,9 +26,9 @@ team_t team = {
     /* Team name */
     "ateam",
     /* First member's full name */
-    "Harry Bovik",
+    "Kwon Jihyun",
     /* First member's email address */
-    "bovik@cs.cmu.edu",
+    "cat2998@naver.com",
     /* Second member's full name (leave blank if none) */
     "",
     /* Second member's email address (leave blank if none) */
@@ -46,6 +46,7 @@ team_t team = {
 #define WSIZE 4
 #define DSIZE 8
 #define CHUNKSIZE (1 << 12)
+#define SEGREGATED_SIZE 12
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 
@@ -64,27 +65,36 @@ team_t team = {
 #define HDRP(bp) ((char *)(bp)-WSIZE)
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
-#define PRED(bp) GET(bp)
+#define PRED(bp) GET(bp) // *(void **)(bp)
 #define SUCC(bp) GET((char *)bp + WSIZE)
+#define ROOT(class) (*(void **)((char *)(heap_listp) + (WSIZE * class)))
 
 /* Given block ptr bp, compute address of next and previous blocks */
 #define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE)))
 #define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))
 
-static char *free_listp;
+static char *heap_listp;
 
 static void splice_free_block(void *bp); // 가용 리스트에서 bp에 해당하는 블록을 제거하는 함수
 static void add_free_block(void *bp);    // 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수
+int get_class(size_t size);              // 적합한 가용 리스트를 찾는 함수
 
 static void *find_fit(size_t asize)
 {
     /*  First-fit search */
-    void *bp;
+    char *bp;
+    char *bp_list;
+    int class = get_class(asize);
 
-    for (bp = free_listp; bp != 0; bp = SUCC(bp))
+    while (class < SEGREGATED_SIZE)
     {
-        if (!GET_ALLOC(HDRP(bp)) && (asize <= GET_SIZE(HDRP(bp))))
-            return bp;
+        bp_list = ROOT(class);
+        for (bp = bp_list; bp != NULL; bp = SUCC(bp))
+        {
+            if (asize <= GET_SIZE(HDRP(bp)))
+                return bp;
+        }
+        class += 1;
     }
 
     return NULL;
@@ -174,20 +184,20 @@ static void *extend_heap(size_t words)
  */
 int mm_init(void)
 {
-    /* Create the initial empty heap */
-    if ((free_listp = mem_sbrk(8 * WSIZE)) == (void *)-1)
+    // /* Create the initial empty heap */
+    if ((heap_listp = mem_sbrk((SEGREGATED_SIZE + 4) * WSIZE)) == (void *)-1)
         return -1;
-    PUT(free_listp, 0);
-    PUT(free_listp + (1 * WSIZE), PACK(DSIZE, 1));     // 프롤로그 헤더
-    PUT(free_listp + (2 * WSIZE), PACK(DSIZE, 1));     // 프롤로그 푸터
-    PUT(free_listp + (3 * WSIZE), PACK(4 * WSIZE, 0)); // 가용블록 헤더
-    PUT(free_listp + (4 * WSIZE), NULL);               // 가용블록 pred
-    PUT(free_listp + (5 * WSIZE), NULL);               // 가용블록 succ
-    PUT(free_listp + (6 * WSIZE), PACK(4 * WSIZE, 0)); // 가용블록 푸터
-    PUT(free_listp + (7 * WSIZE), PACK(0, 1));         // 에필로그 헤더
-    free_listp += (4 * WSIZE);
+    PUT(heap_listp, 0);
+    PUT(heap_listp + (1 * WSIZE), PACK((2 + SEGREGATED_SIZE) * WSIZE, 1)); // 프롤로그 헤더
+    for (int i = 0; i < SEGREGATED_SIZE; i++)
+        PUT(heap_listp + ((2 + i) * WSIZE), NULL);
+    PUT(heap_listp + ((2 + SEGREGATED_SIZE) * WSIZE), PACK((2 + SEGREGATED_SIZE) * WSIZE, 1)); // 프롤로그 푸터
+    PUT(heap_listp + ((3 + SEGREGATED_SIZE) * WSIZE), PACK(0, 1));                             // 에필로그 헤더
+    heap_listp += (2 * WSIZE);
 
     /* Wxtend the empty hep with a free block of CHUNKSIZE bytes */
+    if (extend_heap(4) == NULL)
+        return -1;
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
         return -1;
     return 0;
@@ -270,23 +280,52 @@ void *mm_realloc(void *bp, size_t size)
 // 가용 리스트에서 bp에 해당하는 블록을 제거하는 함수
 static void splice_free_block(void *bp)
 {
-    if (free_listp == bp) // 처음이면
+    int class = get_class(GET_SIZE(HDRP(bp)));
+    // char *bp_list = ROOT(class);
+
+    if (SUCC(bp) != NULL)
+        PRED(SUCC(bp)) = PRED(bp);
+    if (ROOT(class) == bp) // 처음이면
     {
-        free_listp = SUCC(bp);
+        ROOT(class) = SUCC(bp);
         return;
     }
     SUCC(PRED(bp)) = SUCC(bp);
-    if (SUCC(bp) != NULL)
-        PRED(SUCC(bp)) = PRED(bp);
     return;
 }
 
 // 가용 리스트의 맨 앞에 현재 블록을 추가하는 함수
 static void add_free_block(void *bp)
 {
-    SUCC(bp) = free_listp;
-    if (free_listp != NULL)
-        PRED(free_listp) = bp;
-    free_listp = bp;
+    // char *bp_list = ROOT(get_class(GET_SIZE(HDRP(bp))));
+
+    // SUCC(bp) = bp_list;
+    // if (bp_list != NULL)
+    //     PRED(bp_list) = bp;
+    // bp_list = bp;
+
+    int class = get_class(GET_SIZE(HDRP(bp)));
+
+    SUCC(bp) = ROOT(class);
+    if (ROOT(class) != NULL)
+        PRED(ROOT(class)) = bp;
+    ROOT(class) = bp;
     return;
+}
+
+// 적합한 가용 리스트를 찾는 함수
+int get_class(size_t size)
+{
+    size_t class_size = 32;
+
+    if (size < 16)
+        return -1;
+
+    for (int i = 0; i < SEGREGATED_SIZE; i++)
+    {
+        class_size <<= 1;
+        if (size < class_size)
+            return i;
+    }
+    return SEGREGATED_SIZE - 1;
 }
