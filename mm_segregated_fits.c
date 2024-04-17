@@ -45,7 +45,7 @@ team_t team = {
 /* Basic constants and macros */
 #define WSIZE 4
 #define DSIZE 8
-#define CHUNKSIZE (1 << 12)
+#define CHUNKSIZE (1 << 10)
 #define SEGREGATED_SIZE 12
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -202,10 +202,10 @@ int mm_init(void)
     heap_listp += (2 * WSIZE);
 
     /* Wxtend the empty hep with a free block of CHUNKSIZE bytes */
-    if (extend_heap(4) == NULL)
-        return -1;
-    if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
-        return -1;
+    // if (extend_heap(4) == NULL)
+    //     return -1;
+    // if (extend_heap(CHUNKSIZE / WSIZE) == NULL)
+    //     return -1;
     return 0;
 }
 
