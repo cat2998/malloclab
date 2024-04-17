@@ -261,7 +261,9 @@ void *mm_realloc(void *bp, size_t size)
         return mm_malloc(size);
 
     size_t old_size = GET_SIZE(HDRP(bp));
+    size_t prev_size = GET_SIZE(HDRP(PREV_BLKP(bp)));
     size_t next_size = GET_SIZE(HDRP(NEXT_BLKP(bp)));
+    size_t prev_alloc = GET_ALLOC(HDRP(PREV_BLKP(bp)));
     size_t next_alloc = GET_ALLOC(HDRP(NEXT_BLKP(bp)));
 
     if (size + 2 * WSIZE <= old_size)
@@ -272,6 +274,15 @@ void *mm_realloc(void *bp, size_t size)
         PUT(HDRP(bp), PACK(old_size + next_size, 1));
         PUT(FTRP(bp), PACK(old_size + next_size, 1));
         return bp;
+    }
+    if (!prev_alloc && size + 2 * WSIZE <= old_size + prev_size)
+    {
+        char *pre = PREV_BLKP(bp);
+        splice_free_block(pre);
+        memmove(pre, bp, old_size);
+        PUT(HDRP(pre), PACK(old_size + prev_size, 1));
+        PUT(FTRP(pre), PACK(old_size + prev_size, 1));
+        return pre;
     }
 
     void *newp = mm_malloc(size);
@@ -313,7 +324,7 @@ static void add_free_block(void *bp)
 // 적합한 가용 리스트를 찾는 함수
 int get_class(size_t size)
 {
-    size_t class_size = 32;
+    size_t class_size = 16;
 
     if (size < 16)
         return -1;
