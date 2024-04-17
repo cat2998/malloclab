@@ -81,23 +81,29 @@ int get_class(size_t size);              // 적합한 가용 리스트를 찾는
 
 static void *find_fit(size_t asize)
 {
-    /*  First-fit search */
+    /* best_fit_search */
     char *bp;
-    char *bp_list;
+    char *best_fit_bp = NULL;
     int class = get_class(asize);
 
     while (class < SEGREGATED_SIZE)
     {
-        bp_list = ROOT(class);
-        for (bp = bp_list; bp != NULL; bp = SUCC(bp))
+        for (bp = ROOT(class); bp != NULL; bp = SUCC(bp))
         {
             if (asize <= GET_SIZE(HDRP(bp)))
-                return bp;
+            {
+                if (best_fit_bp == NULL)
+                    best_fit_bp = bp;
+                else if (GET_SIZE(HDRP(bp)) < GET_SIZE(HDRP(best_fit_bp)))
+                    best_fit_bp = bp;
+            }
         }
         class += 1;
+        if (best_fit_bp != NULL)
+            return best_fit_bp;
     }
 
-    return NULL;
+    return best_fit_bp;
 }
 
 static void place(void *bp, size_t asize)
